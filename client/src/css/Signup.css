@@ -1,0 +1,20 @@
+.container-1 {
+    display: block;
+    width: 100%; 
+  }
+  @media (max-width: 1150px) {
+      .container-1 {
+      display: none; 
+    }
+    .container{
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+  }
+  .personal_btn:hover{
+      background-color: lightgrey;
+  }
+  .personal_btn_link:hover{
+    background-color: lightgrey;
+  }
