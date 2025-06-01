@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Home from './Pages/Home';
@@ -42,7 +42,7 @@ const App = () => {
       {loading ? (
         <Loading />
       ) : (
-        <Router>
+        <>
           <Navbar />
           <Routes>
             <Route path='/' element={<Home />} />
@@ -77,7 +77,7 @@ const App = () => {
             theme="dark"
           />
           <Footer />
-        </Router>
+        </>
       )}
     </div>
   );
