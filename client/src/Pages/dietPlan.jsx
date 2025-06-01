@@ -48,6 +48,8 @@ const DietPlan = () => {
   const pdfRef = useRef(null);
   const navigate = useNavigate();
 
+  const API = import.meta.env.VITE_API;
+
   useEffect(() => {
     fetchUserData();
     generateFitnessFact();
@@ -68,7 +70,7 @@ const DietPlan = () => {
         return;
       }
 
-      const response = await axios.get('http://localhost:8000/user/profile', {
+      const response = await axios.get(`${API}/user/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -206,7 +208,7 @@ const DietPlan = () => {
             mealsPerDay: answers.mealsPerDay
         };
 
-        const response = await axios.post('http://localhost:8000/user/save-diet', 
+        const response = await axios.post(`${API}/user/save-diet`, 
             weeklyPlan,
             {
                 headers: {

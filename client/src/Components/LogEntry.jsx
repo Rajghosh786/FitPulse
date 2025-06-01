@@ -27,6 +27,8 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
     const [sleep, setSleep] = useState({ hours: 8, quality: 'good' });
     const [loading, setLoading] = useState(false);
 
+    const API = import.meta.env.VITE_API;
+
     const addMeal = () => {
         setMeals([...meals, { name: '', portions: '', time: '' }]);
     };
@@ -233,7 +235,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
             };
 
             const token = localStorage.getItem('token');
-            const response = await axios.post('http://localhost:8000/user/log-entry', logData, {
+            const response = await axios.post(`${API}/user/log-entry`, logData, {
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'

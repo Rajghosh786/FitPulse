@@ -19,6 +19,8 @@ const Signup = () => {
   const [userId, setUserId] = useState(null);
   const [userToken, setUserToken] = useState(null);
 
+  const API = import.meta.env.VITE_API;
+
   const validateAge = (dateString) => {
     const today = new Date();
     const birthDate = new Date(dateString);
@@ -51,7 +53,7 @@ const Signup = () => {
     };
   
     try {
-      const response = await axios.post("http://localhost:8000/user/signup", formData);
+      const response = await axios.post(`${API}/user/signup`, formData);
       setUserId(response.data.userId);
       setUserToken(response.data.refreshToken);
       setRegistrationComplete(true);
@@ -79,7 +81,7 @@ const Signup = () => {
         className="absolute inset-0 w-full h-full object-cover z-0"
       >
         <source
-          src="https://videos.pexels.com/video-files/5319759/5319759-uhd_2560_1440_25fps.mp4"
+          src="https://videos.pexels.com/video-files/3195530/3195530-sd_640_360_25fps.mp4"
           type="video/mp4"
         />
         Your browser does not support the video tag.

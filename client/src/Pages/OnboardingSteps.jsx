@@ -5,6 +5,8 @@ import { FiArrowRight, FiCheck } from 'react-icons/fi';
 import axios from 'axios';
 
 const OnboardingSteps = ({ userId, token }) => {
+    const API = import.meta.env.VITE_API;
+    
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
@@ -164,7 +166,7 @@ const OnboardingSteps = ({ userId, token }) => {
         } else {
             try {
                 const response = await axios.post(
-                    'http://localhost:8000/user/update-profile',
+                    `${API}/user/update-profile`,
                     {
                         ...formData,
                         userId

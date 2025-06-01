@@ -53,6 +53,8 @@ const Progress = () => {
     });
     const [error, setError] = useState(null);
 
+    const API = import.meta.env.VITE_API;
+
     useEffect(() => {
         fetchUserProgress();
     }, [timeframe]);
@@ -74,7 +76,7 @@ const Progress = () => {
                 throw new Error('No authorization token found');
             }
 
-            const response = await axios.get(`http://localhost:8000/user/progress/${timeframe}`, {
+            const response = await axios.get(`${API}/user/progress/${timeframe}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 

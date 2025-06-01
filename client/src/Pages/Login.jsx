@@ -9,12 +9,14 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const API = import.meta.env.VITE_API;
+
   const handleLogin = (e) => {
     e.preventDefault();
   
     const loginData = { email, password };
   
-    axios.post("http://localhost:8000/user/login", loginData)
+    axios.post(`${API}/user/login`, loginData)
       .then((res) => {
         const {refreshToken, findUser } = res.data;
         login(refreshToken);
@@ -37,7 +39,7 @@ const Login = () => {
         className="absolute inset-0 w-full h-full object-cover z-0"
       >
         <source
-          src="https://videos.pexels.com/video-files/5319759/5319759-uhd_2560_1440_25fps.mp4"
+          src="https://videos.pexels.com/video-files/3191884/3191884-sd_640_360_25fps.mp4"
           type="video/mp4"
         />
         Your browser does not support the video tag.

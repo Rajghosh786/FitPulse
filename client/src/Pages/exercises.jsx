@@ -55,7 +55,7 @@ const Exercises = () => {
         
         setLoading(true);
         try {
-            const response = await axios.get(`https://exercisedb.p.rapidapi.com/exercises/bodyPart/${bodyPart}`, {
+            const response = await axios.get(`https://exercisedb.p.rapidapi.com/exercises/bodyPart/${bodyPart.toLowerCase()}`, {
                 headers: {
                     'X-RapidAPI-Key': API_KEY,
                     'X-RapidAPI-Host': 'exercisedb.p.rapidapi.com',
@@ -96,7 +96,7 @@ const Exercises = () => {
     }
 
     return (
-        <div className="min-h-screen p-6 bg-gray-50">
+        <div className="min-h-screen bg-gray-900 text-white p-8">
             {/* Search and Filter Section */}
             <div className="max-w-7xl mx-auto mb-8">
                 <div className="flex flex-col md:flex-row gap-4 mb-6">

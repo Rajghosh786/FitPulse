@@ -12,6 +12,7 @@ const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 const WorkoutCard = ({ workout, onSave }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
+
     const getLevelColor = (level) => {
         const colors = {
             'Beginner': 'bg-green-100 text-green-800',
@@ -90,6 +91,7 @@ const WorkoutsList = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [showFilters, setShowFilters] = useState(true);
     const [aiGenerating, setAiGenerating] = useState(false);
+    const API = import.meta.env.VITE_API;
 
     const workoutTypes = [
         'Strength',
@@ -125,15 +127,21 @@ const WorkoutsList = () => {
 
     const parseAIWorkouts = (aiResponse) => {
         try {
-            // First, ensure we have a valid response
             if (!aiResponse) return [];
-
-            // Split into workouts more reliably
-            const workouts = aiResponse.split(/Workout\s*\d+:/i).filter(Boolean);
+            
+            const workouts = aiResponse
+                .split(/Workout\s*\d+:?/i)
+                .filter(Boolean)
+                .map(workout => workout.trim());
             
             return workouts.map(workout => {
                 const lines = workout.trim().split('\n').filter(Boolean);
-                const name = lines[0]?.trim() || 'Unnamed Workout';
+                
+                // Clean up the workout name
+                const name = lines[0]
+                    ?.replace(/^[^a-zA-Z]+/, '') // Remove leading special characters
+                    ?.replace(/[:]/g, '')  // Remove colons
+                    ?.trim() || 'Unnamed Workout';
                 
                 // More robust regex patterns
                 const typeMatch = workout.match(/Type:\s*([^,\n]+)/i);
@@ -186,27 +194,41 @@ const WorkoutsList = () => {
         setAiGenerating(true);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
-        const prompt = `Generate 3 detailed workout plans${searchTerm ? ` for "${searchTerm}"` : ''}.
+        // Add variety with random focus areas and workout styles
+        const bodyParts = ['Upper Body', 'Lower Body', 'Core', 'Full Body'];
+        const styles = ['HIIT', 'Strength Training', 'Circuit Training', 'Endurance'];
+        const randomBodyPart = bodyParts[Math.floor(Math.random() * bodyParts.length)];
+        const randomStyle = styles[Math.floor(Math.random() * styles.length)];
+        
+        const prompt = `Generate 3 unique and creative ${searchTerm ? searchTerm + ' ' : ''}workout plans.
+        Focus on: ${randomBodyPart}
+        Style: ${randomStyle}
         ${filters.type ? `Type: ${filters.type}` : ''}
         ${filters.level ? `Level: ${filters.level}` : ''}
         ${filters.duration ? `Duration: around ${filters.duration} minutes` : ''}
         
-        Format each workout as:
-        Workout Name
-        Type: [type]
-        Level: [level]
-        Duration: [minutes]
-        Description: Brief description
-        Exercises:
-        1. [exercise name]: [sets] sets of [reps] reps - [instructions]
-        2. [next exercise...]`;
+        For each workout include:
+        1. A creative workout name (without special characters)
+        2. Type of workout
+        3. Difficulty level
+        4. Duration in minutes
+        5. A brief description
+        6. A list of exercises with sets, reps, and clear instructions
+        
+        Note: Keep the format clean without using markdown symbols, stars, or special characters.`;
 
         try {
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const workoutText = response.text();
             
-            const formattedWorkouts = parseAIWorkouts(workoutText);
+            // Clean up the response text
+            const cleanedText = workoutText
+                .replace(/[\*\#\`]/g, '')  // Remove markdown symbols
+                .replace(/\n{3,}/g, '\n\n') // Normalize spacing
+                .trim();
+            
+            const formattedWorkouts = parseAIWorkouts(cleanedText);
             setWorkouts(formattedWorkouts);
         } catch (error) {
             console.error('Error generating workouts:', error);
@@ -230,7 +252,7 @@ const WorkoutsList = () => {
     const saveWorkout = async (workout) => {
         try {
             const token = localStorage.getItem('token');
-            await axios.post('http://localhost:8000/api/workouts/save', 
+            await axios.post(`${API}/api/workouts/save`, 
                 { workout },
                 { headers: { 'Authorization': `Bearer ${token}` }}
             );

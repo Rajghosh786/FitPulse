@@ -5,19 +5,8 @@ import { FiActivity, FiTarget, FiUser, FiCalendar } from 'react-icons/fi';
 import { Line, Pie } from 'react-chartjs-2';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement,
-  Filler  // Add this import
-} from 'chart.js';
+import {Chart as ChartJS,CategoryScale,LinearScale,PointElement,LineElement,Title,Tooltip,Legend,ArcElement,Filler} from 'chart.js';
+import { toast } from 'react-toastify';
 
 // Register ChartJS components
 ChartJS.register(
@@ -29,7 +18,7 @@ ChartJS.register(
   Tooltip,
   Legend,
   ArcElement,
-  Filler  // Add Filler plugin
+  Filler
 );
 
 const chartOptions = {
@@ -39,7 +28,7 @@ const chartOptions = {
     legend: {
       position: 'bottom',
       labels: {
-        color: 'rgb(209, 213, 219)', // text-gray-300
+        color: 'rgb(209, 213, 219)', 
         padding: 20,
         font: {
           size: 12
@@ -47,10 +36,10 @@ const chartOptions = {
       }
     },
     tooltip: {
-      backgroundColor: 'rgb(17, 24, 39)', // bg-gray-900
+      backgroundColor: 'rgb(17, 24, 39)',
       titleColor: 'rgb(255, 255, 255)',
       bodyColor: 'rgb(209, 213, 219)',
-      borderColor: 'rgb(75, 85, 99)', // gray-600
+      borderColor: 'rgb(75, 85, 99)', 
       borderWidth: 1,
       padding: 12,
       boxPadding: 6
@@ -68,10 +57,24 @@ const Dashboard = () => {
     avoid: '',
   });
   const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
+  const API = import.meta.env.VITE_API;
+
   useEffect(() => {
-    fetchUserData();
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        await fetchUserData();
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error('Failed to load dashboard data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
   }, []);
 
   const fetchUserData = async () => {
@@ -83,7 +86,7 @@ const Dashboard = () => {
             return;
         }
 
-        const response = await axios.get('http://localhost:8000/user/profile', {
+        const response = await axios.get(`${API}/user/profile`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -128,7 +131,10 @@ const generateAIRecommendations = async (user) => {
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
+        const text = response.text()
+            .replace(/[\*\#\`]/g, '')  // Remove markdown symbols
+            .replace(/\n{3,}/g, '\n\n') // Normalize spacing
+            .trim();
         
         // Parse AI response into sections
         const sections = text.split(/\d\./);
@@ -141,7 +147,7 @@ const generateAIRecommendations = async (user) => {
         // Update recommendations in the database
         const token = localStorage.getItem('token');
         await axios.post(
-            'http://localhost:8000/user/update-profile',
+            `${API}/user/update-profile`,
             {
                 userId: user._id,
                 height: user.height,
@@ -264,8 +270,15 @@ const isOlderThan24Hours = (date) => {
     );
   }
 
-  if (loading) {
-    return <div>Loading...</div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -328,15 +341,17 @@ const isOlderThan24Hours = (date) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">
-            <h3 className="text-xl font-semibold mb-4">Personalized Diet Plan</h3>
-            <p className="text-gray-300 whitespace-pre-line">{aiRecommendations.diet}</p>
-          </div>
+        <div className="grid grid-cols-1 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">
+              <h3 className="text-xl font-semibold mb-4">Personalized Diet Plan</h3>
+              <p className="text-gray-300 whitespace-pre-line">{aiRecommendations.diet}</p>
+            </div>
 
-          <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">
-            <h3 className="text-xl font-semibold mb-4">Workout Recommendations</h3>
-            <p className="text-gray-300 whitespace-pre-line">{aiRecommendations.workout}</p>
+            <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">
+              <h3 className="text-xl font-semibold mb-4">Workout Recommendations</h3>
+              <p className="text-gray-300 whitespace-pre-line">{aiRecommendations.workout}</p>
+            </div>
           </div>
 
           <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">
