@@ -113,7 +113,7 @@ const Dashboard = () => {
 
 const generateAIRecommendations = async (user) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash });
         const prompt = `As a fitness expert, provide personalized recommendations for a person with the following details:
             - Height: ${user.height}cm
             - Weight: ${user.weight}kg
