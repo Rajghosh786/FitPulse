@@ -38,6 +38,8 @@ const DietPlan = () => {
   const [openDay, setOpenDay] = useState(null);
   const [savedDays, setSavedDays] = useState({});
   const [userData, setUserData] = useState(null);
+  const [showPhysicalDetails, setShowPhysicalDetails] = useState(false);
+  const [physicalDetails, setPhysicalDetails] = useState({height: "", weight: ""});
   const [fitnessFact, setFitnessFact] = useState('');
   const [loadingFact, setLoadingFact] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,7 +54,7 @@ const DietPlan = () => {
 
   useEffect(() => {
     fetchUserData();
-    generateFitnessFact();
+    // generateFitnessFact();
   }, []);
 
   useEffect(() => {
@@ -62,81 +64,212 @@ const DietPlan = () => {
     }
   }, [currentQuestion]);
 
-  const fetchUserData = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
+  // const fetchUserData = async () => {
+  //   try {
+  //     const token = localStorage.getItem('token');
+  //     if (!token) {
+  //       navigate('/login');
+  //       return;
+  //     }
+      
+  //     const response = await axios.get(`${API}/user/profile`, {
+  //       headers: {
+  //         'Authorization': `Bearer ${token}`
+  //       }
+  //     });
+  //     setUserData(response.data);
+  //   } catch (error) {
+  //     console.error('Error fetching user data:', error);
+  //     if (error.response?.status === 401) {
+  //       navigate('/login');
+  //     }
+  //   }
+  // };
 
-      const response = await axios.get(`${API}/user/profile`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+const fetchUserData = async () => {
+    try {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            navigate("/login");
+            return;
         }
-      });
-      setUserData(response.data);
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      if (error.response?.status === 401) {
-        navigate('/login');
-      }
-    }
-  };
 
-  const generateFitnessFact = async () => {
-    setLoadingFact(true);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Generate a random interesting fitness fact related to one of these topics:
-    - Weight loss tips
-    - Muscle building facts
-    - Nutrition science
-    - Exercise benefits
-    Keep it concise (2-3 sentences) and engaging.`;
+        const response = await axios.get(`${API}/user/profile`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        const user = response.data;
+
+        setUserData(user);
+
+        if (!user?.height || !user?.weight) {
+            setPhysicalDetails({
+                height: user?.height || "",
+                weight: user?.weight || ""
+            });
+
+            setShowPhysicalDetails(true);
+        }
+
+    } catch (error) {
+        console.error("Error fetching user data:", error);
+
+        if (error.response?.status === 401) {
+            navigate("/login");
+        }
+    }
+};
+  
+  const handlePhysicalDetailsSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!physicalDetails.height) {
+        toast.error("Please enter valid Height");
+        return;
+    }
+
+    if (!physicalDetails.weight) {
+        toast.error("Please enter valid Weight");
+        return;
+    }
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      setFitnessFact(response.text());
+        const token = localStorage.getItem("token");
+        const storedUserData = localStorage.getItem("userData");
+
+        const parsedUserData = JSON.parse(storedUserData);
+
+        const response = await axios.post(
+            `${API}/user/update-height-weight`,
+            {
+                ...parsedUserData,
+                height: physicalDetails.height,
+                weight: physicalDetails.weight,
+                userId: parsedUserData?._id || parsedUserData?.userId
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        if (response.data.user) {
+            localStorage.setItem(
+                "userData",
+                JSON.stringify(response.data.user)
+            );
+
+            setUserData(response.data.user);
+            setShowPhysicalDetails(false);
+
+            toast.success("Physical details updated successfully");
+        }
     } catch (error) {
-      console.error('Error generating fact:', error);
-      setFitnessFact('Unable to load fitness fact. Please try again.');
-    } finally {
-      setLoadingFact(false);
+        console.error("Error updating physical details:", error);
+
+        toast.error(
+            "Failed to update physical details: " +
+            (error.response?.data?.msg || "Unknown error")
+        );
     }
-  };
+};
+
+  // const generateFitnessFact = async () => {
+  //   setLoadingFact(true);
+  //   const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+  //   const prompt = `Generate a random interesting fitness fact related to one of these topics:
+  //   - Weight loss tips
+  //   - Muscle building facts
+  //   - Nutrition science
+  //   - Exercise benefits
+  //   Keep it concise (2-3 sentences) and engaging.`;
+
+  //   try {
+  //     const result = await model.generateContent(prompt);
+  //     const response = await result.response;
+  //     setFitnessFact(response.text());
+  //   } catch (error) {
+  //     console.error('Error generating fact:', error);
+  //     setFitnessFact('Unable to load fitness fact. Please try again.');
+  //   } finally {
+  //     setLoadingFact(false);
+  //   }
+  // };
 
   const generateDietPlan = async (day) => {
     setLoadingDay(day);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Create a structured ${answers.preference} diet plan for ${answers.goal}, with ${answers.mealsPerDay} meals for ${day}.
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+    // const prompt = `Create a structured ${answers.preference} diet plan for ${answers.goal}, with ${answers.mealsPerDay} meals for ${day}.
     
-    Format the response as follows:
-    Morning (Time: 7-9 AM)
-    • Meal item 1 with portion size
-    • Meal item 2 with portion size
-    • Add calorie count
+    // Format the response as follows:
+    // Morning (Time: 7-9 AM)
+    // • Meal item 1 with portion size
+    // • Meal item 2 with portion size
+    // • Add calorie count
 
-    Mid-Morning (Time: 11 AM)
-    • Snack items with portions
-    • Add calorie count
+    // Mid-Morning (Time: 11 AM)
+    // • Snack items with portions
+    // • Add calorie count
 
-    Lunch (Time: 1-2 PM)
-    • Main dish with portion
-    • Side items with portions
-    • Add calorie count
+    // Lunch (Time: 1-2 PM)
+    // • Main dish with portion
+    // • Side items with portions
+    // • Add calorie count
 
-    Evening Snack (Time: 4-5 PM)
-    • Healthy snack options
-    • Add calorie count
+    // Evening Snack (Time: 4-5 PM)
+    // • Healthy snack options
+    // • Add calorie count
 
-    Dinner (Time: 7-8 PM)
-    • Main dish with portion
-    • Side items with portions
-    • Add calorie count
+    // Dinner (Time: 7-8 PM)
+    // • Main dish with portion
+    // • Side items with portions
+    // • Add calorie count
 
-    Total daily calories: [Sum]
-    Protein: [g] | Carbs: [g] | Fats: [g]
+    // Total daily calories: [Sum]
+    // Protein: [g] | Carbs: [g] | Fats: [g]
+
+    // Add emojis for visual appeal and keep formatting clean.`;
+    const prompt = `Create a structured ${answers.preference} diet plan for a user with the goal of ${answers.goal}, with ${answers.mealsPerDay} meals for ${day}.
+
+User physical details:
+- Height: ${userData.height} cm
+- Weight: ${userData.weight} kg
+
+Use the user's height and weight to make the diet plan appropriately personalized, including realistic portion sizes, calorie intake, and macronutrient recommendations.
+
+Format the response as follows:
+Morning (Time: 7-9 AM)
+• Meal item 1 with portion size
+• Meal item 2 with portion size
+• Add calorie count
+
+Mid-Morning (Time: 11 AM)
+• Snack items with portions
+• Add calorie count
+
+Lunch (Time: 1-2 PM)
+• Main dish with portion
+• Side items with portions
+• Add calorie count
+
+Evening Snack (Time: 4-5 PM)
+• Healthy snack options
+• Add calorie count
+
+Dinner (Time: 7-8 PM)
+• Main dish with portion
+• Side items with portions
+• Add calorie count
+
+Total daily calories: [Sum]
+Protein: [g] | Carbs: [g] | Fats: [g]
+
+Make the plan practical and personalized to the user's physical details, fitness goal, dietary preference, and number of meals.
 
     Add emojis for visual appeal and keep formatting clean.`;
 
@@ -173,27 +306,22 @@ const DietPlan = () => {
     setOpenDay((prev) => (prev === day ? null : day));
   };
 
-  const handleSave = (day) => {
-    setSavedDays((prev) => ({ ...prev, [day]: true }));
-    // Hook Firebase or local storage here
-  };
-
   const handleAnswer = (key, value) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
     setCurrentQuestion((prev) => prev + 1);
   };
 
-  const handleDownloadPDF = async () => {
-    const input = pdfRef.current;
-    const canvas = await html2canvas(input);
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save('DietPlan.pdf');
-  };
+  // const handleDownloadPDF = async () => {
+  //   const input = pdfRef.current;
+  //   const canvas = await html2canvas(input);
+  //   const imgData = canvas.toDataURL('image/png');
+  //   const pdf = new jsPDF('p', 'mm', 'a4');
+  //   const imgProps = pdf.getImageProperties(imgData);
+  //   const pdfWidth = pdf.internal.pageSize.getWidth();
+  //   const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  //   pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+  //   pdf.save('DietPlan.pdf');
+  // };
 
   const handleSaveWeeklyPlan = async () => {
     try {
@@ -233,18 +361,27 @@ const DietPlan = () => {
   };
 
   const formatPlan = (plan) => {
+    const cleanText = (text) =>
+      text
+        .replace(/^#{1,6}\s*/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .trim();
+
     const sections = plan
       .split(/(?=Breakfast|Lunch|Dinner|Snack|Snacks)/gi)
       .map((sec, idx) => (
         <div key={idx} className="border-b border-gray-700 pb-3 mb-3">
           <h4 className="text-lg text-purple-400 font-semibold mb-1">
-            {sec.split('\n')[0].trim()}
+            {cleanText(sec.split('\n')[0])}
           </h4>
+
           <p className="text-sm text-gray-300 whitespace-pre-wrap">
-            {sec.split('\n').slice(1).join('\n').replace(/\*/g, '').trim()}
+            {cleanText(sec.split('\n').slice(1).join('\n'))}
           </p>
         </div>
       ));
+
     return sections;
   };
 
@@ -255,7 +392,7 @@ const DietPlan = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-[105rem] mx-auto">
         {/* Header Section */}
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-white mb-4">Your Custom Diet Plan</h1>
@@ -285,7 +422,7 @@ const DietPlan = () => {
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-lg font-medium text-white">{history.goal}</h3>
                     <span className="text-xs text-gray-500">
-                      {new Date(history.createdAt).toLocaleDateString()}
+                      {new Date(history.createdAt).toLocaleString()}
                     </span>
                   </div>
                   <p className="text-sm text-gray-400">
@@ -298,7 +435,81 @@ const DietPlan = () => {
 
           {/* Center Column - Diet Days List (col-span-2) */}
           <div className="lg:col-span-2">
-            {currentQuestion < questions.length ? (
+          {showPhysicalDetails ? (
+              <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-8 border border-gray-700/50">
+
+                  <h2 className="text-2xl font-semibold text-white mb-2">
+                      Physical Details
+                  </h2>
+
+                  <p className="text-gray-400 mb-6">
+                      We need your height and weight to create a personalized diet plan.
+                  </p>
+
+                  <form onSubmit={handlePhysicalDetailsSubmit}>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                          {!userData?.height && (
+                              <div>
+                                  <label className="text-gray-300 mb-2 block">
+                                      Height (cm)
+                                  </label>
+
+                                  <input
+                                      type="number"
+                                      min="1"
+                                      value={physicalDetails.height}
+                                      onChange={(e) =>
+                                          setPhysicalDetails((prev) => ({
+                                              ...prev,
+                                              height: e.target.value
+                                          }))
+                                      }
+                                      onWheel={(e) => e.target.blur()}
+                                      className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3"
+                                      required
+                                  />
+                              </div>
+                          )}
+
+                          {!userData?.weight && (
+                              <div>
+                                  <label className="text-gray-300 mb-2 block">
+                                      Weight (kg)
+                                  </label>
+
+                                  <input
+                                      type="number"
+                                      min="1"
+                                      value={physicalDetails.weight}
+                                      onChange={(e) =>
+                                          setPhysicalDetails((prev) => ({
+                                              ...prev,
+                                              weight: e.target.value
+                                          }))
+                                      }
+                                      onWheel={(e) => e.target.blur()}
+                                      className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3"
+                                      required
+                                  />
+                              </div>
+                          )}
+                      </div>
+
+                      <div className="flex justify-end mt-6">
+                          <button
+                              type="submit"
+                              className="bg-sky-600 hover:bg-sky-700 text-white px-6 py-3 rounded-xl"
+                          >
+                              Continue
+                          </button>
+                      </div>
+
+                  </form>
+
+              </div>
+          ) : currentQuestion < questions.length ? (
               <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-8 border border-gray-700/50">
                 <div className="mb-8">
                   <div className="flex justify-between mb-4">
@@ -350,14 +561,14 @@ const DietPlan = () => {
                       >
                         {saving ? 'Saving...' : isGenerating ? 'Generating...' : 'Save Plan'}
                       </button>
-                      <button
+                      {/* <button
                         onClick={handleDownloadPDF}
                         disabled={isGenerating || generatedDays.size < 7}
                         className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-xl 
                                  transition-all duration-300 disabled:opacity-50"
                       >
                         Download PDF
-                      </button>
+                      </button> */}
                     </div>
                   </div>
                 </div>

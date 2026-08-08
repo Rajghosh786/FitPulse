@@ -4,3 +4,9 @@ body{
   overflow-x: hidden;
   background-color: black;
 }
+
+.bc{
+  border: 2px;
+  border-style: solid;
+  border-color: red;
+}

@@ -1,5 +1,7 @@
 const mongoose = require("mongoose")
+const dns = require("node:dns");
 
+dns.setServers(["1.1.1.1"]);
 
 const connectingDB = ()=>{
     try {

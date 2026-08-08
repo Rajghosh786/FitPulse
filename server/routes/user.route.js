@@ -1,34 +1,326 @@
 const express = require("express")
 const userRouter = express.Router()
 const bcrypt = require('bcrypt');
+const axios = require('axios');
 const { userModel } = require("../models/user.model");
 var jwt = require('jsonwebtoken');
 const { auth } = require("../middlewares/auth");
 require("dotenv").config()
 
-// Helper functions for progress calculations
+// Progress helper functions
+const hasValidWorkout = (workout) => {
+    return workout && workout.type && parseInt(workout.duration, 10) > 0;
+};
+
+const isSameCalendarDay = (a, b) => {
+    const d1 = new Date(a);
+    const d2 = new Date(b);
+    return d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+};
+
+const getWeekKey = (dateInput) => {
+    const date = new Date(dateInput);
+    const day = date.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const monday = new Date(date);
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(monday.getDate() + diff);
+
+    const thursday = new Date(monday);
+    thursday.setDate(monday.getDate() + 3);
+    const yearStart = new Date(thursday.getFullYear(), 0, 1);
+    const weekNum = Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
+
+    return `${thursday.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+};
+
+const getMonthKey = (dateInput) => {
+    const date = new Date(dateInput);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const recalculateWeeklyStats = (dailyLogs, weekKey) => {
+    const weekLogs = dailyLogs.filter(log => getWeekKey(log.date) === weekKey);
+
+    let caloriesConsumed = 0;
+    let caloriesBurned = 0;
+    let workoutsCompleted = 0;
+    let totalWorkoutDuration = 0;
+    let waterIntake = 0;
+    let sleepHoursSum = 0;
+    let latestMeasurements = {
+        chest: 0,
+        waist: 0,
+        hips: 0,
+        arms: 0,
+        thighs: 0
+    };
+    let latestWeight = 0;
+    let latestDate = null;
+
+    weekLogs.forEach(log => {
+        caloriesConsumed += log.totalNutrition?.calories || 0;
+        waterIntake += log.totalNutrition?.waterIntake || 0;
+        sleepHoursSum += log.sleep?.hours || 0;
+
+        if (hasValidWorkout(log.workout)) {
+            workoutsCompleted += 1;
+            caloriesBurned += parseInt(log.workout.caloriesBurned, 10) || 0;
+            totalWorkoutDuration += parseInt(log.workout.duration, 10) || 0;
+        }
+
+        const logDate = new Date(log.date);
+        if (!latestDate || logDate >= latestDate) {
+            latestDate = logDate;
+            latestWeight = log.measurements?.weight || 0;
+            latestMeasurements = {
+                chest: log.measurements?.chest || 0,
+                waist: log.measurements?.waist || 0,
+                hips: log.measurements?.hips || 0,
+                arms: log.measurements?.arms || 0,
+                thighs: log.measurements?.thighs || 0
+            };
+        }
+    });
+
+    const logCount = weekLogs.length;
+
+    return {
+        week: weekKey,
+        weightLog: latestWeight,
+        caloriesConsumed,
+        caloriesBurned,
+        workoutsCompleted,
+        totalWorkoutDuration,
+        nutritionAdherence: 0,
+        waterIntake,
+        sleepHours: logCount > 0 ? sleepHoursSum / logCount : 0,
+        moodScore: 0,
+        measurements: latestMeasurements,
+        createdAt: latestDate || new Date()
+    };
+};
+
+const recalculateMonthlyProgress = (dailyLogs, monthKey) => {
+    const monthLogs = dailyLogs.filter(log => getMonthKey(log.date) === monthKey);
+
+    let totalWorkouts = 0;
+    let totalCaloriesConsumed = 0;
+    let totalCaloriesBurned = 0;
+    let weightSum = 0;
+    let weightCount = 0;
+    const weights = [];
+
+    monthLogs.forEach(log => {
+        totalCaloriesConsumed += log.totalNutrition?.calories || 0;
+
+        if (log.measurements?.weight) {
+            weightSum += log.measurements.weight;
+            weightCount += 1;
+            weights.push({ weight: log.measurements.weight, date: new Date(log.date) });
+        }
+
+        if (hasValidWorkout(log.workout)) {
+            totalWorkouts += 1;
+            totalCaloriesBurned += parseInt(log.workout.caloriesBurned, 10) || 0;
+        }
+    });
+
+    const logCount = monthLogs.length;
+    weights.sort((a, b) => a.date - b.date);
+    const weightChange = weights.length >= 2
+        ? Number((weights[weights.length - 1].weight - weights[0].weight).toFixed(2))
+        : 0;
+
+    return {
+        month: monthKey,
+        averageWeight: weightCount > 0 ? Number((weightSum / weightCount).toFixed(2)) : 0,
+        totalWorkouts,
+        averageCaloriesConsumed: logCount > 0 ? Math.round(totalCaloriesConsumed / logCount) : 0,
+        averageCaloriesBurned: totalWorkouts > 0 ? Math.round(totalCaloriesBurned / totalWorkouts) : 0,
+        workoutConsistency: logCount > 0 ? Math.round((totalWorkouts / logCount) * 100) : 0,
+        nutritionConsistency: 0,
+        weightChange,
+        achievedGoals: [],
+        createdAt: monthLogs.length > 0
+            ? new Date(Math.max(...monthLogs.map(log => new Date(log.date).getTime())))
+            : new Date()
+    };
+};
+
 const calculateWeightChange = (progressData) => {
     if (!progressData || progressData.length < 2) return 0;
-    
-    const sortedData = [...progressData].sort((a, b) => 
-        new Date(b.createdAt) - new Date(a.createdAt)
+
+    const sortedData = [...progressData].sort((a, b) =>
+        new Date(a.createdAt) - new Date(b.createdAt)
     );
-    
-    const latestWeight = sortedData[0].weightLog;
-    const oldestWeight = sortedData[sortedData.length - 1].weightLog;
-    
+
+    const oldestWeight = sortedData[0].weightLog ?? sortedData[0].averageWeight ?? 0;
+    const latestWeight = sortedData[sortedData.length - 1].weightLog ?? sortedData[sortedData.length - 1].averageWeight ?? 0;
+
     return Number((latestWeight - oldestWeight).toFixed(2));
 };
 
-const calculateConsistency = (progressData) => {
-    if (!progressData || progressData.length === 0) return 0;
-    
-    const totalDays = progressData.length;
-    const daysWithWorkouts = progressData.filter(day => 
-        day.workoutsCompleted > 0
-    ).length;
-    
-    return Math.round((daysWithWorkouts / totalDays) * 100);
+const calculateConsistency = (dailyLogs) => {
+    if (!dailyLogs || dailyLogs.length === 0) return 0;
+
+    const daysWithWorkouts = dailyLogs.filter(log => hasValidWorkout(log.workout)).length;
+    return Math.round((daysWithWorkouts / dailyLogs.length) * 100);
+};
+
+const normalizeMetricsForCharts = (metrics, timeframe) => {
+    return metrics.map(item => ({
+        ...item,
+        workoutsCompleted: item.workoutsCompleted ?? item.totalWorkouts ?? 0,
+        weightLog: item.weightLog ?? item.averageWeight ?? 0
+    }));
+};
+
+const generateProgressInsight = async (timeframe, progressPayload) => {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error('Gemini API key not configured');
+    }
+
+    const prompt = `Analyze this fitness ${timeframe} progress data and provide 3-4 key insights and recommendations:
+${JSON.stringify(progressPayload)}
+Focus on trends, improvements, and areas needing attention.
+Format the response in bullet points.`;
+
+    const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
+        {
+            contents: [{ parts: [{ text: prompt }] }]
+        }
+    );
+
+    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+        throw new Error('Empty AI response');
+    }
+
+    return text;
+};
+
+const recalculateAllWeeklyStats = (dailyLogs) => {
+    const weekKeys = [...new Set((dailyLogs || []).map(log => getWeekKey(log.date)))];
+    return weekKeys
+        .map(weekKey => recalculateWeeklyStats(dailyLogs, weekKey))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+};
+
+const recalculateAllMonthlyProgress = (dailyLogs) => {
+    const monthKeys = [...new Set((dailyLogs || []).map(log => getMonthKey(log.date)))];
+    return monthKeys
+        .map(monthKey => recalculateMonthlyProgress(dailyLogs, monthKey))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+};
+
+const buildProgressResponse = (user, timeframe) => {
+    const allDailyLogs = (user.progressMetrics.dailyLogs || [])
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    let metrics;
+    let periodDailyLogs = allDailyLogs;
+
+    if (timeframe === 'weekly') {
+        metrics = (user.progressMetrics.weeklyStats || [])
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 4);
+
+        if (metrics.length > 0) {
+            const weekKeys = new Set(metrics.map(item => item.week));
+            periodDailyLogs = allDailyLogs.filter(log => weekKeys.has(getWeekKey(log.date)));
+        }
+    } else {
+        metrics = (user.progressMetrics.monthlyProgress || [])
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 6);
+
+        if (metrics.length > 0) {
+            const monthKeys = new Set(metrics.map(item => item.month));
+            periodDailyLogs = allDailyLogs.filter(log => monthKeys.has(getMonthKey(log.date)));
+        }
+    }
+
+    const chartMetrics = normalizeMetricsForCharts(metrics, timeframe);
+    const achievedGoals = user.progressMetrics.goals?.filter(goal => goal.achieved) || [];
+    const totalWorkouts = metrics.reduce((acc, curr) =>
+        acc + (curr.workoutsCompleted || curr.totalWorkouts || 0), 0);
+    const weightChange = timeframe === 'monthly' && metrics[0]?.weightChange !== undefined
+        ? metrics[0].weightChange
+        : calculateWeightChange(chartMetrics);
+    const consistency = calculateConsistency(periodDailyLogs);
+
+    const summary = {
+        totalWorkouts,
+        weightChange,
+        consistency,
+        achievedGoals
+    };
+
+    const insight = user.progressMetrics.aiInsights?.[timeframe]?.content || '';
+
+    return {
+        timeframe,
+        metrics: chartMetrics,
+        dailyLogs: allDailyLogs,
+        summary,
+        totalWorkouts: summary.totalWorkouts,
+        weightChange: summary.weightChange,
+        consistency: summary.consistency,
+        achievedGoals: summary.achievedGoals,
+        insight,
+        insightGeneratedAt: user.progressMetrics.aiInsights?.[timeframe]?.generatedAt || null,
+        insightNoData: allDailyLogs.length === 0
+    };
+};
+
+const buildInsightPayload = (user, timeframe) => {
+    const progress = buildProgressResponse(user, timeframe);
+    return {
+        timeframe,
+        metrics: progress.metrics,
+        dailyLogs: progress.dailyLogs.slice(0, 14),
+        summary: progress.summary
+    };
+};
+
+const regenerateAllInsights = async (user) => {
+    const now = new Date();
+
+    if (!user.progressMetrics.aiInsights) {
+        user.progressMetrics.aiInsights = {
+            weekly: { content: '', generatedAt: null },
+            monthly: { content: '', generatedAt: null }
+        };
+    }
+
+    const dailyLogs = user.progressMetrics.dailyLogs || [];
+
+    if (dailyLogs.length === 0) {
+        user.progressMetrics.aiInsights.weekly = { content: '', generatedAt: now };
+        user.progressMetrics.aiInsights.monthly = { content: '', generatedAt: now };
+        return;
+    }
+
+    for (const timeframe of ['weekly', 'monthly']) {
+        try {
+            const content = await generateProgressInsight(timeframe, buildInsightPayload(user, timeframe));
+            user.progressMetrics.aiInsights[timeframe] = {
+                content,
+                generatedAt: now
+            };
+        } catch (error) {
+            console.error(`${timeframe} insight generation error:`, error);
+            user.progressMetrics.aiInsights[timeframe] = {
+                content: '',
+                generatedAt: now
+            };
+        }
+    }
 };
 
 userRouter.post("/signup", async (req,res) => {
@@ -206,6 +498,60 @@ userRouter.post('/update-profile', auth, async (req, res) => {
     }
 });
 
+userRouter.post('/update-height-weight', auth, async (req, res) => {
+    try {
+        const {
+            userId,
+            height,
+            weight
+        } = req.body;
+
+        // Verify that the authenticated user matches the userId
+        if (req.userId !== userId) {
+            return res.status(403).json({ msg: 'Unauthorized access' });
+        }
+
+        // Validate required fields
+        if (!height || !weight) {
+            return res.status(400).json({ msg: 'Missing required fields' });
+        }
+
+        // Additional validation
+        const heightNum = parseFloat(height);
+        const weightNum = parseFloat(weight);
+        
+        if (isNaN(heightNum) || isNaN(weightNum) || heightNum <= 0 || weightNum <= 0) {
+            return res.status(400).json({ msg: 'Invalid height or weight values' });
+        }
+
+        // Update height and weight
+        const updateData = {
+            height: heightNum,
+            weight: weightNum
+        };
+
+        // Update user profile
+        const updatedUser = await userModel.findByIdAndUpdate(
+            userId,
+            updateData,
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ msg: 'User not found' });
+        }
+
+        res.status(200).json({
+            msg: 'Height and weight updated successfully',
+            user: updatedUser
+        });
+
+    } catch (error) {
+        console.error('Height and weight update error:', error);
+        res.status(500).json({ msg: 'Error updating height and weight', error: error.message });
+    }
+});
+
 userRouter.get('/profile', auth, async (req, res) => {
     try {
         const user = await userModel.findById(req.userId);
@@ -306,7 +652,6 @@ userRouter.post('/log-entry', auth, async (req, res) => {
     try {
         const { date, meals, totalNutrition, workout, measurements, mood, sleep, notes } = req.body;
 
-        // Validate measurements
         if (!measurements || typeof measurements.weight !== 'number') {
             return res.status(400).json({ msg: 'Valid weight measurement is required' });
         }
@@ -316,31 +661,37 @@ userRouter.post('/log-entry', auth, async (req, res) => {
             return res.status(404).json({ msg: 'User not found' });
         }
 
-        // Initialize progressMetrics if needed
         if (!user.progressMetrics) {
             user.progressMetrics = {
                 dailyLogs: [],
                 weeklyStats: [],
                 monthlyProgress: [],
-                goals: []
+                goals: [],
+                aiInsights: {
+                    weekly: { content: '', generatedAt: null },
+                    monthly: { content: '', generatedAt: null }
+                }
             };
         }
 
-        // Prepare workout data
-        const workoutData = workout ? {
-            type: workout.type || '',
-            duration: parseInt(workout.duration) || 0,
+        const workoutData = hasValidWorkout(workout) ? {
+            type: workout.type,
+            duration: parseInt(workout.duration, 10) || 0,
             intensity: workout.intensity || 'moderate',
             exercises: Array.isArray(workout.exercises) ? workout.exercises : [],
-            caloriesBurned: parseInt(workout.caloriesBurned) || 0,
-            intensityScore: parseInt(workout.intensityScore) || 0,
-            impactedMuscleGroups: Array.isArray(workout.impactedMuscleGroups) ? 
+            caloriesBurned: parseInt(workout.caloriesBurned, 10) || 0,
+            intensityScore: parseInt(workout.intensityScore, 10) || 0,
+            impactedMuscleGroups: Array.isArray(workout.impactedMuscleGroups) ?
                 workout.impactedMuscleGroups : []
         } : null;
 
-        // Create daily log
+        const logDate = new Date(date);
+        const existingIndex = (user.progressMetrics.dailyLogs || []).findIndex(log =>
+            isSameCalendarDay(log.date, logDate)
+        );
+
         const dailyLog = {
-            date: new Date(date),
+            date: logDate,
             meals: meals.map(meal => ({
                 name: meal.name,
                 portions: meal.portions,
@@ -362,7 +713,7 @@ userRouter.post('/log-entry', auth, async (req, res) => {
             workout: workoutData,
             measurements: Object.fromEntries(
                 Object.entries(measurements).map(([key, value]) => [
-                    key, 
+                    key,
                     parseFloat(value) || 0
                 ])
             ),
@@ -372,64 +723,45 @@ userRouter.post('/log-entry', auth, async (req, res) => {
                 quality: sleep?.quality || 'good'
             },
             notes: notes || '',
-            createdAt: new Date()
+            createdAt: existingIndex >= 0
+                ? user.progressMetrics.dailyLogs[existingIndex].createdAt || new Date()
+                : new Date()
         };
 
-        // Add to dailyLogs
         if (!user.progressMetrics.dailyLogs) {
             user.progressMetrics.dailyLogs = [];
         }
-        user.progressMetrics.dailyLogs.push(dailyLog);
 
-        // Calculate week number
-        const weekStart = new Date(date);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        const weekKey = `${weekStart.getFullYear()}-W${String(Math.ceil(weekStart.getDate() / 7)).padStart(2, '0')}`;
-
-        // Update or create weekly stats
-        let weekStats = user.progressMetrics.weeklyStats.find(stat => stat.week === weekKey);
-        if (!weekStats) {
-            weekStats = {
-                week: weekKey,
-                weightLog: measurements.weight,
-                caloriesConsumed: 0,
-                caloriesBurned: 0,
-                workoutsCompleted: 0,
-                totalWorkoutDuration: 0,
-                nutritionAdherence: 0,
-                waterIntake: 0,
-                sleepHours: 0,
-                moodScore: 0,
-                measurements,
-                createdAt: new Date()
-            };
-            user.progressMetrics.weeklyStats.push(weekStats);
+        if (existingIndex >= 0) {
+            user.progressMetrics.dailyLogs[existingIndex] = dailyLog;
+        } else {
+            user.progressMetrics.dailyLogs.push(dailyLog);
         }
 
-        // Update weekly metrics
-        weekStats.caloriesConsumed += dailyLog.totalNutrition.calories;
-        if (workoutData) {
-            weekStats.caloriesBurned += workoutData.caloriesBurned;
-            weekStats.workoutsCompleted += 1;
-            weekStats.totalWorkoutDuration += workoutData.duration;
-        }
-        weekStats.waterIntake += dailyLog.totalNutrition.waterIntake;
-        weekStats.sleepHours = (weekStats.sleepHours + dailyLog.sleep.hours) / 2;
-        weekStats.measurements = measurements;
+        user.progressMetrics.weeklyStats = recalculateAllWeeklyStats(user.progressMetrics.dailyLogs);
+        user.progressMetrics.monthlyProgress = recalculateAllMonthlyProgress(user.progressMetrics.dailyLogs);
 
+        await regenerateAllInsights(user);
+
+        user.markModified('progressMetrics');
         await user.save();
-        
+
         res.status(200).json({
             msg: 'Log entry saved successfully',
             dailyLog,
-            weekStats
+            weeklyStats: user.progressMetrics.weeklyStats,
+            monthlyProgress: user.progressMetrics.monthlyProgress,
+            aiInsights: user.progressMetrics.aiInsights,
+            progress: {
+                weekly: buildProgressResponse(user, 'weekly'),
+                monthly: buildProgressResponse(user, 'monthly')
+            }
         });
     } catch (error) {
         console.error('Error saving log entry:', error);
-        res.status(500).json({ 
-            msg: 'Error saving log entry', 
-            error: error.message,
-            stack: error.stack // For debugging
+        res.status(500).json({
+            msg: 'Error saving log entry',
+            error: error.message
         });
     }
 });
@@ -444,72 +776,35 @@ userRouter.get('/progress/:timeframe', auth, async (req, res) => {
     try {
         const { timeframe } = req.params;
         const user = await userModel.findById(req.userId);
-        
+
         if (!user) {
             return res.status(404).json({ msg: 'User not found' });
         }
 
-        // Initialize if needed
         user.progressMetrics = user.progressMetrics || {
             dailyLogs: [],
             weeklyStats: [],
             monthlyProgress: [],
-            goals: []
+            goals: [],
+            aiInsights: {
+                weekly: { content: '', generatedAt: null },
+                monthly: { content: '', generatedAt: null }
+            }
         };
 
-        let metrics;
-        if (timeframe === 'weekly') {
-            metrics = user.progressMetrics.weeklyStats.sort((a, b) => 
-                new Date(b.createdAt) - new Date(a.createdAt)
-            ).slice(0, 4); // Last 4 weeks
-        } else {
-            // Calculate monthly progress from weekly stats
-            const monthlyData = {};
-            user.progressMetrics.weeklyStats.forEach(week => {
-                const monthKey = new Date(week.createdAt).toISOString().slice(0, 7); // YYYY-MM
-                if (!monthlyData[monthKey]) {
-                    monthlyData[monthKey] = {
-                        month: monthKey,
-                        totalWorkouts: 0,
-                        totalCalories: 0,
-                        weightSum: 0,
-                        weightCount: 0,
-                        measurements: week.measurements,
-                        createdAt: week.createdAt
-                    };
-                }
-                monthlyData[monthKey].totalWorkouts += week.workoutsCompleted;
-                monthlyData[monthKey].totalCalories += week.caloriesConsumed;
-                monthlyData[monthKey].weightSum += week.weightLog;
-                monthlyData[monthKey].weightCount++;
-            });
-
-            metrics = Object.values(monthlyData).map(month => ({
-                ...month,
-                averageWeight: month.weightSum / month.weightCount,
-                averageCalories: month.totalCalories / month.weightCount
-            })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        if (!user.progressMetrics.aiInsights) {
+            user.progressMetrics.aiInsights = {
+                weekly: { content: '', generatedAt: null },
+                monthly: { content: '', generatedAt: null }
+            };
         }
 
-        // Calculate summary
-        const summary = {
-            totalWorkouts: metrics.reduce((acc, curr) => acc + (curr.workoutsCompleted || curr.totalWorkouts || 0), 0),
-            weightChange: calculateWeightChange(metrics),
-            consistency: calculateConsistency(metrics),
-            achievedGoals: user.progressMetrics.goals?.filter(goal => goal.achieved) || []
-        };
-
-        res.status(200).json({
-            timeframe,
-            metrics,
-            summary
-        });
+        res.status(200).json(buildProgressResponse(user, timeframe));
     } catch (error) {
         console.error('Error fetching progress:', error);
-        res.status(500).json({ 
-            msg: 'Error fetching progress data', 
-            error: error.message,
-            stack: error.stack // For debugging
+        res.status(500).json({
+            msg: 'Error fetching progress data',
+            error: error.message
         });
     }
 });

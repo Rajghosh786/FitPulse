@@ -3,14 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import axios from 'axios';
 import OnboardingSteps from "./OnboardingSteps";
-
+import { toast } from 'react-toastify';
+import useAuth from "../Context/AuthContext";
 
 const Signup = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
@@ -18,6 +19,10 @@ const Signup = () => {
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [userId, setUserId] = useState(null);
   const [userToken, setUserToken] = useState(null);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const API = import.meta.env.VITE_API;
 
@@ -36,9 +41,13 @@ const Signup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
     if (!validateAge(dateOfBirth)) {
-      alert("You must be at least 12 years old to register");
+      toast.error("You must be at least 12 years old to register");
       return;
     }
 
@@ -56,11 +65,17 @@ const Signup = () => {
       const response = await axios.post(`${API}/user/signup`, formData);
       setUserId(response.data.userId);
       setUserToken(response.data.refreshToken);
+
+      localStorage.setItem('userData',JSON.stringify({userId: response.data.userId}));
+      localStorage.setItem('token', response.data.refreshToken);
+
+      login(response.data.refreshToken);
+      
       setRegistrationComplete(true);
     } catch (err) {
       const msg = err.response?.data?.msg || "Signup failed";
       console.error("Signup failed", err);
-      alert(msg);
+      toast.error(msg);
     }
   };
 
@@ -144,17 +159,106 @@ const Signup = () => {
                 />
               </div>
 
-              <div>
+              <div className="relative">
                 <input
-                  className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
-                  type="password"
+                  className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 pr-12 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                  type={showPassword ? "text" : "password"}
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M3 3l18 18" />
+                      <path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" />
+                      <path d="M9.88 4.24A9.77 9.77 0 0 1 12 4c5 0 9.27 3.11 11 8a17.36 17.36 0 0 1-4.07 5.13" />
+                      <path d="M6.61 6.61C4.62 7.94 3.1 9.82 2 12c1.73 4.89 6 8 10 8a9.77 9.77 0 0 0 2.12-.24" />
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
               </div>
 
+              <div className="relative">
+                <input
+                  className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 pr-12 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Confirm Password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  aria-label={
+                    showConfirmPassword ? "Hide confirm password" : "Show confirm password"
+                  }
+                >
+                  {showConfirmPassword ? (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M3 3l18 18" />
+                      <path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" />
+                      <path d="M9.88 4.24A9.77 9.77 0 0 1 12 4c5 0 9.27 3.11 11 8a17.36 17.36 0 0 1-4.07 5.13" />
+                      <path d="M6.61 6.61C4.62 7.94 3.1 9.82 2 12c1.73 4.89 6 8 10 8a9.77 9.77 0 0 0 2.12-.24" />
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-red-400 text-xs mt-1">
+                    Passwords do not match
+                  </p>
+                )}
+              </div>
+              
               <div>
                 <input
                   className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
@@ -225,7 +329,7 @@ const Signup = () => {
               <div className="flex-grow h-px bg-gray-600"></div>
             </div>
 
-            <div className="space-y-3">
+            <div className="flex gap-3">
               <button className="w-full border border-gray-600 text-white py-3 rounded-xl flex items-center justify-center hover:bg-gray-700/50 transition-colors">
                 <span className="mr-2">G</span>
                 Google

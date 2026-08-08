@@ -123,7 +123,7 @@ const ChatBot = ({ currentPage, userData }) => {
     setIsLoading(true);
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
       // Create conversation history for context
       const conversationHistory = messages.slice(-6).map(msg => ({

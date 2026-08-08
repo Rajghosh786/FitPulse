@@ -25,6 +25,7 @@ import GymFinder from './Pages/GymFinder';
 import Progress from './Pages/Progress';
 import ProtectedRoute from './Components/ProtectedRoute';
 import WorkoutsList from './Pages/WorkoutsList';
+import "./App.css";
 
 const App = () => {
   const [loading, setLoading] = useState(true);
@@ -49,7 +50,7 @@ const App = () => {
             <Route path='/login' element={<Login />} />
             <Route path='/signup' element={<Signup />} />
             <Route path='/exercises' element={<Exercises />} />
-            <Route path='/diet-plan' element={<DietPlan />} />
+            <Route path='/diet-plan' element={<ProtectedRoute><DietPlan /></ProtectedRoute>} />
             {/* <Route path='/workouts' element={<WorkoutList/>}/> */}
             {/* <Route path="/workouts/:id" element={<WorkoutDetails />} /> */}
             <Route path='/profile' element={<Profile />} />
@@ -59,22 +60,21 @@ const App = () => {
             {/* <Route path='/workouttracking' element={<WorkoutTracking />} /> */}
             <Route path='/settings' element={<Settings />} />
             <Route path='/gymfinder' element={<GymFinder />} />
-            <Route path='/progress' element={<Progress />} />
+            <Route path='/progress' element={<ProtectedRoute><Progress /></ProtectedRoute>}/>
             <Route path="*" element={<NotFound />} />
             <Route path="/workouts" element={<ProtectedRoute><WorkoutsList /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           </Routes>
-          <ToastContainer 
-            position="top-right"
+          <ToastContainer
+            position="top-center"
             autoClose={3000}
             hideProgressBar={false}
             newestOnTop
             closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
             pauseOnHover
             theme="dark"
+            toastClassName="custom-toast"
+            progressClassName="custom-progress"
           />
           <Footer />
         </>

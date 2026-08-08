@@ -1,0 +1,72 @@
+/* React Toastify */
+
+.custom-toast {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(31, 41, 55, 0.98),
+    rgba(17, 24, 39, 0.98)
+    ) !important;
+  color: #f9fafb !important;
+
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  border-radius: 14px !important;
+
+  min-height: 54px !important;
+  width: 360px !important;
+
+  padding: 0 16px !important;
+
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35),
+    0 4px 10px rgba(0, 0, 0, 0.2) !important;
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+/* Toast content */
+
+.custom-toast .Toastify__toast-body {
+  margin: 0 !important;
+  padding: 0 !important;
+
+  display: flex;
+  align-items: center;
+
+  line-height: 1.4 !important;
+}
+
+/* Error icon */
+
+.custom-toast .Toastify__toast-icon {
+  width: 22px !important;
+  margin-right: 10px !important;
+}
+
+/* Close button */
+
+.custom-toast .Toastify__close-button {
+  color: #9ca3af !important;
+  opacity: 0.8 !important;
+
+  align-self: center !important;
+
+  transition: all 0.2s ease;
+}
+
+.custom-toast .Toastify__close-button:hover {
+  color: white !important;
+  opacity: 1 !important;
+}
+
+/* Progress bar */
+
+.custom-progress {
+  height: 3px !important;
+  border-radius: 0 0 14px 14px !important;
+}

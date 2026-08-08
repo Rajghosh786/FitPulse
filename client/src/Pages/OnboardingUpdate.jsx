@@ -1,30 +1,40 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-// import { motion } from 'framer-motion';
-import { FiArrowRight, FiCheck } from 'react-icons/fi';
-import axios from 'axios';
-import { toast } from 'react-toastify';
+import { useEffect, useState } from "react";
+import { FiCheck } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { toast } from "react-toastify";
 
-const OnboardingSteps = ({ userId, token }) => {
-    const API = import.meta.env.VITE_API;
-    
+const OnboardingUpdate = ({ userData, userId, token, onComplete  }) => {
     const navigate = useNavigate();
+    const API = import.meta.env.VITE_API;
     const [formData, setFormData] = useState({
-        height: '',
-        weight: '',
-        bmi: '',
-        fitnessGoal: '',
-        targetWeight: '',
-        dietaryPreference: '',
-        mealsPerDay: 3,
-        hasAllergies: false
+        height: userData?.height || "",
+        weight: userData?.weight || "",
+        bmi: userData?.bmi || "",
+        fitnessGoal: userData?.fitnessGoal || "",
+        targetWeight: userData?.targetWeight || "",
+        dietaryPreference: userData?.dietaryPreference || "",
+        mealsPerDay: userData?.mealsPerDay || ""
     });
 
     const calculateBMI = () => {
         if (formData.height && formData.weight) {
             const heightInMeters = formData.height / 100;
-            const bmi = (formData.weight / (heightInMeters * heightInMeters)).toFixed(2);
-            setFormData(prev => ({ ...prev, bmi }));
+
+            const bmi = (
+                formData.weight /
+                (heightInMeters * heightInMeters)
+            ).toFixed(2);
+
+            setFormData((prev) => ({
+                ...prev,
+                bmi
+            }));
+        } else {
+            setFormData((prev) => ({
+                ...prev,
+                bmi: ""
+            }));
         }
     };
 
@@ -32,40 +42,48 @@ const OnboardingSteps = ({ userId, token }) => {
         calculateBMI();
     }, [formData.height, formData.weight]);
 
+    const updateField = (field, value) => {
+        setFormData((prev) => ({
+            ...prev,
+            [field]: value
+        }));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-            if (!formData?.height) {
-                toast.error("Please enter valid Height");
-                return;
-            }
+        if (!formData?.height) {
+            toast.error("Please enter valid Height");
+            return;
+        }
 
-            if (!formData?.weight) {
-                toast.error("Please enter valid Weight");
-                return;
-            }
+        if (!formData?.weight) {
+            toast.error("Please enter valid Weight");
+            return;
+        }
 
-            if (!formData?.fitnessGoal) {
-                toast.error("Please select fitness goal");
-                return;
-            }
+        if (!formData?.fitnessGoal) {
+            toast.error("Please select fitness goal");
+            return;
+        }
 
-            if (
-                formData?.fitnessGoal !== "Health Maintenance" &&
-                !formData?.targetWeight
-            ) {
-                toast.error("Please enter valid Target Weight");
-                return;
-            }
+        if (
+            formData?.fitnessGoal !== "Health Maintenance" &&
+            !formData?.targetWeight
+        ) {
+            toast.error("Please enter valid Target Weight");
+            return;
+        }
 
-            if (!formData?.dietaryPreference?.trim()) {
-                toast.error("Please select dietary preference");
-                return;
-            }
+        if (!formData?.dietaryPreference?.trim()) {
+            toast.error("Please select dietary preference");
+            return;
+        }
 
-            if (!formData?.mealsPerDay) {
-                toast.error("Please enter valid Meals per Day");
-                return;
-            }
+        if (!formData?.mealsPerDay) {
+            toast.error("Please enter valid Meals per Day");
+            return;
+        }
+        console.log("TOKEN:", userData);
         try {
             const response = await axios.post(
                 `${API}/user/update-profile`,
@@ -82,8 +100,9 @@ const OnboardingSteps = ({ userId, token }) => {
             );
 
             if (response.data.user) {
+                localStorage.setItem("userData",JSON.stringify(response.data.user));
                 toast.success("Profile updated successfully");
-                navigate("/dashboard");
+                onComplete(response.data.user);
             }
         } catch (error) {
             console.error("Error updating profile:", error);
@@ -95,9 +114,24 @@ const OnboardingSteps = ({ userId, token }) => {
     return (
         <div className="min-h-screen bg-gray-900">
             <div className="container mx-auto px-4 py-12">
-                <div className="max-w-3xl mx-auto bg-gray-800/50 backdrop-blur-sm p-8 rounded-3xl shadow-2xl border border-gray-700/50">
 
-                    <form onSubmit={handleSubmit}>
+                <div className="max-w-3xl mx-auto">
+
+                    <div className="text-center mb-8">
+                        <h1 className="text-4xl font-bold text-white mb-2">
+                            Complete Your Profile
+                        </h1>
+
+                        <p className="text-gray-400">
+                            Update your fitness details to get personalized
+                            workout, diet plans ,progress tracker and dashboard.
+                        </p>
+                    </div>
+
+                    <form
+                        onSubmit={handleSubmit}
+                        className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-3xl shadow-2xl border border-gray-700/50"
+                    >
 
                         {/* Physical Details */}
 
@@ -115,15 +149,17 @@ const OnboardingSteps = ({ userId, token }) => {
 
                                     <input
                                         type="number"
+                                        min="1"
                                         value={formData.height}
                                         onChange={(e) =>
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                height: e.target.value
-                                            }))
+                                            updateField(
+                                                "height",
+                                                e.target.value
+                                            )
                                         }
                                         onWheel={(e) => e.target.blur()}
-                                        className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3"
+                                        className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                                        required
                                     />
                                 </div>
 
@@ -134,29 +170,33 @@ const OnboardingSteps = ({ userId, token }) => {
 
                                     <input
                                         type="number"
+                                        min="1"
                                         value={formData.weight}
                                         onChange={(e) =>
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                weight: e.target.value
-                                            }))
+                                            updateField(
+                                                "weight",
+                                                e.target.value
+                                            )
                                         }
                                         onWheel={(e) => e.target.blur()}
-                                        className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3"
+                                        className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                                        required
                                     />
                                 </div>
 
                             </div>
 
                             {formData.bmi && (
-                                <div className="bg-sky-900/30 p-4 rounded-xl mt-4">
+                                <div className="bg-sky-900/30 border border-sky-800/40 p-4 rounded-xl mt-4">
                                     <p className="text-white">
-                                        Your BMI: {formData.bmi}
+                                        Your BMI:{" "}
+                                        <span className="font-semibold">
+                                            {formData.bmi}
+                                        </span>
                                     </p>
                                 </div>
                             )}
                         </div>
-
 
                         {/* Fitness Goals */}
 
@@ -171,28 +211,21 @@ const OnboardingSteps = ({ userId, token }) => {
                                     "Weight Loss",
                                     "Weight Gain",
                                     "Health Maintenance"
-                                ].map(goal => (
+                                ].map((goal) => (
                                     <button
                                         type="button"
                                         key={goal}
                                         onClick={() =>
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                fitnessGoal: goal,
-                                                targetWeight:
-                                                    goal === "Health Maintenance"
-                                                        ? ""
-                                                        : prev.targetWeight
-                                            }))
+                                            updateField("fitnessGoal", goal)
                                         }
-                                        className={`p-4 rounded-xl border text-center ${
+                                        className={`p-4 rounded-xl border text-center transition-all ${
                                             formData.fitnessGoal === goal
-                                                ? "border-sky-500 bg-sky-900/30"
-                                                : "border-gray-600 bg-gray-700/30"
+                                                ? "border-sky-500 bg-sky-900/30 text-white"
+                                                : "border-gray-600 bg-gray-700/30 text-gray-300 hover:bg-gray-700/50"
                                         }`}
                                     >
                                         <div className="flex items-center justify-center gap-2">
-                                            {goal}
+                                            <span>{goal}</span>
 
                                             {formData.fitnessGoal === goal && (
                                                 <FiCheck className="text-sky-400" />
@@ -203,6 +236,8 @@ const OnboardingSteps = ({ userId, token }) => {
 
                             </div>
 
+                            {/* Target Weight */}
+
                             {formData.fitnessGoal &&
                                 formData.fitnessGoal !== "Health Maintenance" && (
                                     <div className="mt-5">
@@ -212,15 +247,17 @@ const OnboardingSteps = ({ userId, token }) => {
 
                                         <input
                                             type="number"
+                                            min="1"
                                             value={formData.targetWeight}
                                             onChange={(e) =>
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    targetWeight: e.target.value
-                                                }))
+                                                updateField(
+                                                    "targetWeight",
+                                                    e.target.value
+                                                )
                                             }
                                             onWheel={(e) => e.target.blur()}
-                                            className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3"
+                                            className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                                            required
                                         />
                                     </div>
                                 )}
@@ -240,24 +277,24 @@ const OnboardingSteps = ({ userId, token }) => {
                                     "Vegan",
                                     "Vegetarian",
                                     "Non-Vegetarian"
-                                ].map(diet => (
+                                ].map((diet) => (
                                     <button
                                         type="button"
                                         key={diet}
                                         onClick={() =>
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                dietaryPreference: diet
-                                            }))
+                                            updateField(
+                                                "dietaryPreference",
+                                                diet
+                                            )
                                         }
-                                        className={`p-4 rounded-xl border text-center ${
+                                        className={`p-4 rounded-xl border text-center transition-all ${
                                             formData.dietaryPreference === diet
-                                                ? "border-sky-500 bg-sky-900/30"
-                                                : "border-gray-600 bg-gray-700/30"
+                                                ? "border-sky-500 bg-sky-900/30 text-white"
+                                                : "border-gray-600 bg-gray-700/30 text-gray-300 hover:bg-gray-700/50"
                                         }`}
                                     >
                                         <div className="flex items-center justify-center gap-2">
-                                            {diet}
+                                            <span>{diet}</span>
 
                                             {formData.dietaryPreference === diet && (
                                                 <FiCheck className="text-sky-400" />
@@ -283,13 +320,14 @@ const OnboardingSteps = ({ userId, token }) => {
                                 max="6"
                                 value={formData.mealsPerDay}
                                 onChange={(e) =>
-                                    setFormData(prev => ({
-                                        ...prev,
-                                        mealsPerDay: e.target.value
-                                    }))
+                                    updateField(
+                                        "mealsPerDay",
+                                        e.target.value
+                                    )
                                 }
                                 onWheel={(e) => e.target.blur()}
-                                className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3"
+                                className="w-full bg-gray-700/50 text-white border border-gray-600 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                                required
                             />
                         </div>
 
@@ -302,16 +340,18 @@ const OnboardingSteps = ({ userId, token }) => {
                                 type="submit"
                                 className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
                             >
-                                Complete Profile
+                                Update Profile
                             </button>
 
                         </div>
 
                     </form>
+
                 </div>
+
             </div>
         </div>
     );
 };
 
-export default OnboardingSteps;
+export default OnboardingUpdate;

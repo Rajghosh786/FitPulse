@@ -7,7 +7,7 @@ import axios from 'axios';
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-const LogEntry = ({ onLogSaved, date = new Date() }) => {
+const LogEntry = ({ onLogSaved, logs = [], date = new Date() }) => {
     const [meals, setMeals] = useState([{ name: '', portions: '', time: '' }]);
     const [workout, setWorkout] = useState({ 
         type: '',
@@ -45,7 +45,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
 
     const calculateCalories = async (meals) => {
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
             const prompt = `Act as a nutritional calculator. For these meals:
                 ${meals.map(m => `${m.name} - ${m.portions}`).join('\n')}
                 
@@ -91,7 +91,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
 
     const calculateWorkoutStats = async (workout) => {
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
             const prompt = `Act as a fitness calculator. For this workout:
                 Type: ${workout.type}
                 Duration: ${workout.duration} minutes
@@ -172,32 +172,45 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
             // Validate required fields
             if (!measurements.weight) {
                 toast.error('Weight measurement is required');
+                setLoading(false);
                 return;
             }
 
             if (!meals[0].name || !meals[0].portions) {
                 toast.error('At least one meal with name and portions is required');
+                setLoading(false);
                 return;
             }
 
-            const nutritionData = await calculateCalories(meals);
-            
-            // Initialize workout data with null or calculated values
-            let workoutData = {
-                caloriesBurned: 0,
-                intensityScore: 0,
-                impactedMuscleGroups: []
-            };
-
             // Only calculate workout stats if type and duration are provided
-            if (workout.type && workout.duration) {
+            const hasWorkout = workout.type && parseInt(workout.duration, 10) > 0;
+            let workoutPayload = null;
+
+            if (hasWorkout) {
                 try {
-                    workoutData = await calculateWorkoutStats(workout);
+                    const workoutData = await calculateWorkoutStats(workout);
+                    workoutPayload = {
+                        type: workout.type,
+                        duration: parseInt(workout.duration, 10) || 0,
+                        intensity: workout.intensity,
+                        exercises: workout.exercises,
+                        ...workoutData
+                    };
                 } catch (error) {
                     console.error('Workout calculation error:', error);
-                    // Continue with default values if workout calculation fails
+                    workoutPayload = {
+                        type: workout.type,
+                        duration: parseInt(workout.duration, 10) || 0,
+                        intensity: workout.intensity,
+                        exercises: workout.exercises,
+                        caloriesBurned: estimateCaloriesBurned(workout),
+                        intensityScore: getIntensityScore(workout.intensity),
+                        impactedMuscleGroups: estimateMuscleGroups(workout.type)
+                    };
                 }
             }
+
+            const nutritionData = await calculateCalories(meals);
 
             const logData = {
                 date: new Date().toISOString(),
@@ -219,13 +232,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                     fats: nutritionData.fats,
                     waterIntake: 0
                 },
-                workout: workout.type ? {
-                    type: workout.type,
-                    duration: parseInt(workout.duration) || 0,
-                    intensity: workout.intensity,
-                    exercises: workout.exercises,
-                    ...workoutData
-                } : null,
+                workout: workoutPayload,
                 measurements: Object.fromEntries(
                     Object.entries(measurements).map(([key, value]) => [key, parseFloat(value) || 0])
                 ),
@@ -258,10 +265,10 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
     };
 
     return (
-        <div className="bg-gray-800/50 rounded-xl p-6 space-y-6">
+        <div className="bg-gray-800/50 rounded-xl p-5 space-y-5 lg:col-span-1 lg:row-span-4 h-full">
             <h2 className="text-2xl font-semibold text-white">Daily Log</h2>
             
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Meals Section */}
                 <div>
                     <div className="flex justify-between items-center mb-4">
@@ -275,13 +282,13 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                         </button>
                     </div>
                     
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {meals.map((meal, index) => (
                             <motion.div
                                 key={index}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="grid grid-cols-3 gap-4"
+                                className="grid grid-cols-3 gap-2"
                             >
                                 <input
                                     type="text"
@@ -302,7 +309,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                                         type="time"
                                         value={meal.time}
                                         onChange={(e) => updateMeal(index, 'time', e.target.value)}
-                                        className="bg-gray-700 text-white rounded-lg px-4 py-2 flex-1"
+                                        className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full min-w-0"
                                     />
                                     {index > 0 && (
                                         <button
@@ -322,7 +329,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                 {/* Workout Section */}
                 <div>
                     <h3 className="text-xl text-white mb-4">Workout</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-2">
                         <input
                             type="text"
                             placeholder="Workout type"
@@ -336,6 +343,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                             value={workout.duration}
                             onChange={(e) => setWorkout({ ...workout, duration: e.target.value })}
                             className="bg-gray-700 text-white rounded-lg px-4 py-2"
+                            onWheel={(e) => e.target.blur()}
                         />
                         <select
                             value={workout.intensity}
@@ -362,7 +370,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                 {/* Measurements Section */}
                 <div>
                     <h3 className="text-xl text-white mb-4">Measurements</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-2">
                         <div>
                             <label className="block text-gray-400 text-sm mb-1">Weight (kg)</label>
                             <input
@@ -376,6 +384,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                                 })}
                                 className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full"
                                 placeholder="Weight in kg"
+                                onWheel={(e) => e.target.blur()}
                             />
                         </div>
                         <div>
@@ -389,6 +398,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                                 })}
                                 className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full"
                                 placeholder="Chest in cm"
+                                onWheel={(e) => e.target.blur()}
                             />
                         </div>
                         <div>
@@ -402,6 +412,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                                 })}
                                 className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full"
                                 placeholder="Waist in cm"
+                                onWheel={(e) => e.target.blur()}
                             />
                         </div>
                         {/* Add other measurement fields similarly */}
@@ -412,7 +423,7 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                 <button
                     type="submit"
                     disabled={loading}
-                    className={`w-full px-6 py-3 rounded-xl font-medium flex items-center justify-center gap-2
+                    className={`w-full px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2
                         ${loading 
                             ? 'bg-gray-600 cursor-not-allowed' 
                             : 'bg-sky-600 hover:bg-sky-700'} text-white transition-colors`}
@@ -425,6 +436,48 @@ const LogEntry = ({ onLogSaved, date = new Date() }) => {
                     )}
                 </button>
             </form>
+
+            {/* Log History */}
+            <div className="pt-2">
+                <h3 className="text-xl text-white mb-4">Log History</h3>
+
+                <div className="max-h-[1000px] overflow-y-auto space-y-3 pr-2">
+                    {logs.length > 0 ? (
+                        logs.map((log, index) => (
+                            <div
+                                key={log._id || index}
+                                className="bg-gray-700/50 rounded-lg p-4"
+                            >
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-white font-medium">
+                                        {new Date(log.date || log.createdAt).toLocaleDateString()}
+                                    </p>
+
+                                    <span className="text-sky-400 text-sm">
+                                        {log.measurements?.weight || 0} kg
+                                    </span>
+                                </div>
+
+                                <div className="text-sm text-gray-400 space-y-1">
+                                    <p>
+                                        Workout: {log.workout?.type ? `${log.workout.type} (${log.workout.duration || 0} min)` : 'None'}
+                                    </p>
+
+                                    {log.measurements && (
+                                        <p>
+                                            Waist: {log.measurements.waist || 0} cm
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-gray-500 text-sm">
+                            No logs available yet.
+                        </p>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };

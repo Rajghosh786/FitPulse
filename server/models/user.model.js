@@ -136,8 +136,7 @@ const userSchema = new mongoose.Schema({
             },
             workout: {
                 type: {
-                    type: String,
-                    required: function() { return this.workout !== null; }
+                    type: String
                 },
                 duration: {
                     type: Number,
@@ -204,7 +203,17 @@ const userSchema = new mongoose.Schema({
                 default: false
             },
             achievedDate: Date
-        }]
+        }],
+        aiInsights: {
+            weekly: {
+                content: { type: String, default: '' },
+                generatedAt: { type: Date }
+            },
+            monthly: {
+                content: { type: String, default: '' },
+                generatedAt: { type: Date }
+            }
+        }
     }
 }, {timestamps: true});
 

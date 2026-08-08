@@ -91,6 +91,9 @@ const WorkoutsList = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [showFilters, setShowFilters] = useState(true);
     const [aiGenerating, setAiGenerating] = useState(false);
+    const [showBodyStatsModal, setShowBodyStatsModal] = useState(false);
+    const [height, setHeight] = useState('');
+    const [weight, setWeight] = useState('');
     const API = import.meta.env.VITE_API;
 
     const workoutTypes = [
@@ -115,8 +118,50 @@ const WorkoutsList = () => {
     ];
 
     useEffect(() => {
-        // Generate initial workouts when component mounts
-        generateAIWorkouts();
+        const fetchUserData = async () => {
+            try {
+                const token = localStorage.getItem("token");
+
+                if (!token) {
+                    setShowBodyStatsModal(true);
+                    return;
+                }
+
+                const response = await axios.get(`${API}/user/profile`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                });
+
+                const userData = response.data;
+
+                if (!userData?.height || !userData?.weight) {
+                    setShowBodyStatsModal(true);
+                    return;
+                }
+
+                setHeight(userData.height);
+                setWeight(userData.weight);
+
+                generateAIWorkouts(
+                    "",
+                    userData.height,
+                    userData.weight
+                );
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+
+                if (error.response?.status === 401) {
+                    setShowBodyStatsModal(true);
+                    return;
+                }
+
+                toast.error("Failed to load user data");
+                setShowBodyStatsModal(true);
+            }
+        };
+
+        fetchUserData();
     }, []);
 
     useEffect(() => {
@@ -190,9 +235,13 @@ const WorkoutsList = () => {
         }
     };
 
-    const generateAIWorkouts = async (searchTerm = '') => {
+    const generateAIWorkouts = async (searchTerm = '', userHeight = height, userWeight = weight) => {
         setAiGenerating(true);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        if (!userHeight || !userWeight) {
+            setShowBodyStatsModal(true);
+            return;
+        }
+        const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
         
         // Add variety with random focus areas and workout styles
         const bodyParts = ['Upper Body', 'Lower Body', 'Core', 'Full Body'];
@@ -201,6 +250,13 @@ const WorkoutsList = () => {
         const randomStyle = styles[Math.floor(Math.random() * styles.length)];
         
         const prompt = `Generate 3 unique and creative ${searchTerm ? searchTerm + ' ' : ''}workout plans.
+
+        User physical information:
+        Height: ${userHeight} cm
+        Weight: ${userWeight} kg
+
+        Use the user's height and weight to make the workout recommendations appropriate for their body size and fitness needs. Do not make medical assumptions.
+
         Focus on: ${randomBodyPart}
         Style: ${randomStyle}
         ${filters.type ? `Type: ${filters.type}` : ''}
@@ -263,6 +319,78 @@ const WorkoutsList = () => {
         }
     };
 
+    const handleBodyStatsSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!height) {
+            toast.error("Please enter valid Height");
+            return;
+        }
+
+        if (!weight) {
+            toast.error("Please enter valid Weight");
+            return;
+        }
+
+        const numericHeight = Number(height);
+        const numericWeight = Number(weight);
+
+        if (numericHeight <= 0 || numericWeight <= 0) {
+            toast.error("Please enter valid height and weight");
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem("token");
+            const storedUserData = localStorage.getItem("userData");
+            console.log(token,storedUserData)
+            if (!token || !storedUserData) {
+                toast.error("User id not found. Please login again.");
+                return;
+            }
+            const parsedUserData = JSON.parse(storedUserData);
+            console.log(parsedUserData)
+            const response = await axios.post(
+                `${API}/user/update-height-weight`,
+                {
+                    height: numericHeight,
+                    weight: numericWeight,
+                    userId: parsedUserData?._id || parsedUserData?.userId
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    }
+                }
+            );
+
+            if (response.data.user) {
+                localStorage.setItem("userData",JSON.stringify(response.data.user));
+
+                setHeight(response.data.user.height);
+                setWeight(response.data.user.weight);
+
+                setShowBodyStatsModal(false);
+
+                toast.success("Physical details updated successfully");
+
+                await generateAIWorkouts(
+                    "",
+                    response.data.user.height,
+                    response.data.user.weight
+                );
+            }
+        } catch (error) {
+            console.error("Error updating physical details:", error);
+
+            toast.error(
+                "Failed to update physical details: " +
+                (error.response?.data?.msg || "Unknown error")
+            );
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-900 px-4 py-8">
             <div className="max-w-7xl mx-auto">
@@ -272,7 +400,7 @@ const WorkoutsList = () => {
                         Discover and create personalized workout routines
                     </p>
                 </div>
-
+        
                 {/* Search and Filters Section */}
                 <div className="bg-gray-800 rounded-xl p-6 mb-8">
                     <form onSubmit={handleSearch} className="flex gap-4 mb-6">
@@ -357,6 +485,59 @@ const WorkoutsList = () => {
                     </div>
                 )}
             </div>
+
+            {showBodyStatsModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                <div className="w-full max-w-sm rounded-xl bg-white dark:bg-gray-800 p-6 shadow-2xl">
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                        Enter Your Details
+                    </h2>
+
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">
+                        We need your height and weight to create personalized workouts.
+                    </p>
+
+                    <form onSubmit={handleBodyStatsSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Height (cm)
+                            </label>
+
+                            <input
+                                type="number"
+                                min="1"
+                                value={height}
+                                onChange={(e) => setHeight(e.target.value)}
+                                placeholder="e.g. 175"
+                                className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Weight (kg)
+                            </label>
+
+                            <input
+                                type="number"
+                                min="1"
+                                value={weight}
+                                onChange={(e) => setWeight(e.target.value)}
+                                placeholder="e.g. 70"
+                                className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            className="w-full py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            Continue
+                        </button>
+                    </form>
+                </div>
+            </div>
+            )}
         </div>
     );
 };

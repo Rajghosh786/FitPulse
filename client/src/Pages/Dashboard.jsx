@@ -7,6 +7,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import {Chart as ChartJS,CategoryScale,LinearScale,PointElement,LineElement,Title,Tooltip,Legend,ArcElement,Filler} from 'chart.js';
 import { toast } from 'react-toastify';
+import OnboardingUpdate from './OnboardingUpdate';
 
 // Register ChartJS components
 ChartJS.register(
@@ -58,6 +59,7 @@ const Dashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
   const navigate = useNavigate();
 
   const API = import.meta.env.VITE_API;
@@ -94,6 +96,22 @@ const Dashboard = () => {
         
         setUserData(response.data);
         
+        const onboardingIncomplete =
+          !response.data?.dietaryPreference ||
+          !response.data?.fitnessGoal ||
+          !response.data?.height ||
+          !response.data?.weight ||
+          !response.data?.mealsPerDay ||
+          (
+              response.data?.fitnessGoal !== "Health Maintenance" &&
+              !response.data?.targetWeight
+          );
+
+        if (onboardingIncomplete) {
+            setOnboardingRequired(true);
+            return;
+        }
+
         // Generate AI recommendations if they don't exist or are older than 24 hours
         if (!response.data.aiRecommendations?.lastUpdated || 
             isOlderThan24Hours(new Date(response.data.aiRecommendations.lastUpdated))) {
@@ -113,7 +131,7 @@ const Dashboard = () => {
 
 const generateAIRecommendations = async (user) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
         const prompt = `As a fitness expert, provide personalized recommendations for a person with the following details:
             - Height: ${user.height}cm
             - Weight: ${user.weight}kg
@@ -281,6 +299,27 @@ const isOlderThan24Hours = (date) => {
     );
   }
 
+  if (onboardingRequired) {
+      const token = localStorage.getItem("token");
+       return (
+        <OnboardingUpdate
+            userData={userData}
+            userId={userData?._id}
+            token={token}
+            onComplete={async (updatedUser) => {
+                setUserData(updatedUser);
+                setOnboardingRequired(false);
+
+                try {
+                    await generateAIRecommendations(updatedUser);
+                } catch (error) {
+                    console.error("Failed to generate AI recommendations:", error);
+                }
+            }}
+        />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <motion.div
@@ -304,7 +343,7 @@ const isOlderThan24Hours = (date) => {
           <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">
             <FiActivity className="w-8 h-8 text-sky-500 mb-4" />
             <h3 className="text-lg font-semibold">Target Weight</h3>
-            <p className="text-2xl font-bold">{userData?.targetWeight} kg</p>
+            <p className="text-2xl font-bold">{userData?.fitnessGoal === "Health Maintenance" ? userData?.weight : userData?.targetWeight} kg</p>
           </div>
 
           <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50">

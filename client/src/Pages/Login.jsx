@@ -2,12 +2,17 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import useAuth from "../Context/AuthContext";
 import axios from 'axios';
+import OnboardingUpdate from "./OnboardingUpdate";
+import { toast } from "react-toastify";
 
 const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
+  const [userData, setUserData] = useState(null);
+  const [userToken, setUserToken] = useState(null);
 
   const API = import.meta.env.VITE_API;
 
@@ -21,13 +26,42 @@ const Login = () => {
         const {refreshToken, findUser } = res.data;
         login(refreshToken);
         localStorage.setItem('userData', JSON.stringify(findUser));
+
+        const onboardingIncomplete =
+          !findUser?.dietaryPreference ||
+          !findUser?.fitnessGoal ||
+          !findUser?.height ||
+          !findUser?.weight ||
+          !findUser?.mealsPerDay ||
+          (
+            findUser?.fitnessGoal !== "Health Maintenance" &&
+            !findUser?.targetWeight
+          );
+
+        if (onboardingIncomplete) {
+          setUserData(findUser);
+          setUserToken(refreshToken);
+          setOnboardingRequired(true);
+          return;
+        }
+
         navigate("/dashboard");
       })
       .catch((err) => {
         const msg = err.response?.data?.msg || "Login failed";
-        alert(msg);
+        toast.error(msg);
       });
   };
+
+  if (onboardingRequired) {
+    return (
+      <OnboardingUpdate
+        userData={userData}
+        userId={userData?._id || userData?.userId}
+        token={userToken}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen relative">

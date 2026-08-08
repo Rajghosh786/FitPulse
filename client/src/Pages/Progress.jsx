@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import { Line, Bar, Radar, Doughnut } from 'react-chartjs-2';
 import { FiActivity, FiTrendingUp, FiAward, FiCalendar } from 'react-icons/fi';
 import axios from 'axios';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { toast } from 'react-toastify';
 import {
     Chart as ChartJS,
@@ -20,6 +19,7 @@ import {
     Filler,
 } from 'chart.js';
 import LogEntry from '../Components/LogEntry';
+import OnboardingUpdate from './OnboardingUpdate';
 
 // Register ChartJS components
 ChartJS.register(
@@ -36,15 +36,14 @@ ChartJS.register(
     Filler
 );
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-
 const Progress = () => {
     const [timeframe, setTimeframe] = useState('weekly');
-    const [userData, setUserData] = useState(null);
     const [insights, setInsights] = useState('');
+    const [insightNoData, setInsightNoData] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [selectedMetric, setSelectedMetric] = useState('weight');
     const [progressData, setProgressData] = useState(null);
+    const [userData, setUserData] = useState(null);
+    const [onboardingRequired, setOnboardingRequired] = useState(false);
     const [chartData, setChartData] = useState({
         weightChartData: null,
         workoutChartData: null,
@@ -76,6 +75,34 @@ const Progress = () => {
                 throw new Error('No authorization token found');
             }
 
+            // First check user's profile
+            const profileResponse = await axios.get(`${API}/user/profile`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            setUserData(profileResponse.data);
+
+            const onboardingIncomplete =
+                !profileResponse.data?.dietaryPreference ||
+                !profileResponse.data?.fitnessGoal ||
+                !profileResponse.data?.height ||
+                !profileResponse.data?.weight ||
+                !profileResponse.data?.mealsPerDay ||
+                (
+                    profileResponse.data?.fitnessGoal !== "Health Maintenance" &&
+                    !profileResponse.data?.targetWeight
+                );
+
+            if (onboardingIncomplete) {
+                setOnboardingRequired(true);
+                return;
+            }
+
+            // Profile is complete, so load progress
+            setOnboardingRequired(false);
+
             const response = await axios.get(`${API}/user/progress/${timeframe}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -85,34 +112,14 @@ const Progress = () => {
             }
 
             setProgressData(response.data);
-            
-            // Only generate insights if we have data
-            if (response.data.metrics && response.data.metrics.length > 0) {
-                await generateInsights(response.data);
-            }
+            setInsights(response.data.insight || '');
+            setInsightNoData(response.data.insightNoData || false);
         } catch (error) {
             console.error('Error fetching progress:', error);
             setError(error.message);
             toast.error('Failed to load progress data: ' + error.message);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const generateInsights = async (data) => {
-        try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const prompt = `Analyze this fitness progress data and provide 3-4 key insights and recommendations:
-                ${JSON.stringify(data)}
-                Focus on trends, improvements, and areas needing attention.
-                Format the response in bullet points.`;
-
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            setInsights(response.text());
-        } catch (error) {
-            console.error('Error generating insights:', error);
-            setInsights('Unable to generate insights at the moment.');
         }
     };
 
@@ -162,7 +169,7 @@ const Progress = () => {
             labels: metrics.map(d => new Date(d.createdAt).toLocaleDateString()),
             datasets: [{
                 label: 'Weight (kg)',
-                data: metrics.map(d => d.weightLog),
+                data: metrics.map(d => d.weightLog ?? d.averageWeight ?? 0),
                 borderColor: 'rgb(14, 165, 233)',
                 backgroundColor: 'rgba(14, 165, 233, 0.1)',
                 fill: true
@@ -174,7 +181,7 @@ const Progress = () => {
             labels: metrics.map(d => new Date(d.createdAt).toLocaleDateString()),
             datasets: [{
                 label: 'Workouts Completed',
-                data: metrics.map(d => d.workoutsCompleted),
+                data: metrics.map(d => d.workoutsCompleted ?? d.totalWorkouts ?? 0),
                 backgroundColor: 'rgba(14, 165, 233, 0.7)'
             }]
         };
@@ -198,12 +205,13 @@ const Progress = () => {
         };
 
         // Goal Progress Chart
+        const achievedCount = progressData.summary?.achievedGoals?.length || progressData.achievedGoals?.length || 0;
         const goalChartData = {
             labels: ['Completed', 'In Progress'],
             datasets: [{
                 data: [
-                    progressData.summary.achievedGoals.length,
-                    3 - progressData.summary.achievedGoals.length // Assuming 3 total goals
+                    achievedCount,
+                    achievedCount === 0 ? 1 : 0
                 ],
                 backgroundColor: [
                     'rgba(14, 165, 233, 0.7)',
@@ -220,19 +228,66 @@ const Progress = () => {
         };
     };
 
-    const handleLogSaved = (logData) => {
-        // Refresh progress data after new log is saved
-        fetchUserProgress();
+    const handleLogSaved = (saveResponse) => {
+        if (saveResponse?.progress) {
+            const updated = saveResponse.progress[timeframe];
+            if (updated) {
+                setProgressData(updated);
+                setInsights(updated.insight || '');
+                setInsightNoData(updated.insightNoData || false);
+            }
+        } else {
+            fetchUserProgress();
+        }
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500 mx-auto"></div>
+                    <p className="text-gray-400 mt-4">
+                        Loading your progress data...
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    if (onboardingRequired) {
+        const token = localStorage.getItem("token");
+
+        return (
+            <OnboardingUpdate
+                userData={userData}
+                userId={userData?._id}
+                token={token}
+                onComplete={async (updatedUser) => {
+                    setUserData(updatedUser);
+                    await fetchUserProgress();
+                }}
+            />
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black p-8">
-            <div className="max-w-7xl mx-auto">
-                <LogEntry onLogSaved={handleLogSaved} />
-
+            <div className="max-w-full mx-auto grid grid-cols-1 lg:grid-cols-4 gap-5">
+                <LogEntry 
+                  onLogSaved={handleLogSaved}
+                  logs={progressData?.dailyLogs || []} 
+                />
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mb-4 lg:col-span-4 order-first text-center"
+                    >
+                        <h1 className="text-4xl font-bold text-white mb-4">Your Fitness Journey</h1>
+                        <p className="text-gray-400">Track your progress and celebrate your achievements</p>
+                    </motion.div>
                 {loading ? (
-                    <div className="text-center py-8">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500 mx-auto"></div>
+                    <div className="lg:col-start-2 lg:col-span-3 min-h-[500px] flex flex-col items-center justify-center text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
                         <p className="text-gray-400 mt-4">Loading your progress data...</p>
                     </div>
                 ) : error ? (
@@ -247,21 +302,11 @@ const Progress = () => {
                     </div>
                 ) : (
                     <>
-                        {/* Header Section */}
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="mb-8"
-                        >
-                            <h1 className="text-4xl font-bold text-white mb-4">Your Fitness Journey</h1>
-                            <p className="text-gray-400">Track your progress and celebrate your achievements</p>
-                        </motion.div>
-
                         {/* Time Frame Selector */}
-                        <div className="flex gap-4 mb-8">
+                        <div className="flex items-center gap-2 mb-0 lg:col-start-2 lg:col-span-3">
                             <button
                                 onClick={() => setTimeframe('weekly')}
-                                className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                                     timeframe === 'weekly'
                                         ? 'bg-sky-600 text-white'
                                         : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -269,9 +314,10 @@ const Progress = () => {
                             >
                                 Weekly
                             </button>
+
                             <button
                                 onClick={() => setTimeframe('monthly')}
-                                className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                                     timeframe === 'monthly'
                                         ? 'bg-sky-600 text-white'
                                         : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -281,74 +327,71 @@ const Progress = () => {
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 lg:col-start-2 lg:col-span-3">
                             {/* Stats Cards */}
                             <motion.div
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+                                className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
                             >
                                 <StatsCard
                                     icon={<FiActivity />}
                                     title="Workouts"
                                     value={progressData?.totalWorkouts || 0}
-                                    change="+12%"
-                                    positive={true}
                                     timeframe={timeframe}
                                 />
                                 <StatsCard
                                     icon={<FiTrendingUp />}
                                     title="Weight Change"
                                     value={`${progressData?.weightChange || 0}kg`}
-                                    change="-2.5kg"
-                                    positive={true}
+                                    positive={(progressData?.weightChange || 0) <= 0}
                                     timeframe={timeframe}
                                 />
                                 <StatsCard
                                     icon={<FiAward />}
                                     title="Goals Achieved"
                                     value={progressData?.achievedGoals?.length || 0}
-                                    change="+2"
-                                    positive={true}
                                     timeframe={timeframe}
                                 />
                                 <StatsCard
                                     icon={<FiCalendar />}
                                     title="Consistency"
                                     value={`${progressData?.consistency || 0}%`}
-                                    change="+5%"
-                                    positive={true}
                                     timeframe={timeframe}
                                 />
                             </motion.div>
-
-                            {/* AI Insights */}
+                        </div>
+                                
+                        {/* AI Insights */}
+                        <div className="mt-0 lg:col-start-2 lg:col-span-3">
                             <motion.div
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                className="lg:col-span-1 bg-gray-800/50 rounded-xl p-6"
+                                className="lg:col-span-3 bg-gray-800/50 rounded-xl p-5"
                             >
                                 <h3 className="text-xl font-semibold text-white mb-4">AI Insights</h3>
                                 <div className="space-y-4 text-gray-300">
                                     {insights ? (
                                         <div dangerouslySetInnerHTML={{ __html: insights.replace(/\n/g, '<br/>') }} />
+                                    ) : insightNoData || !(progressData?.dailyLogs?.length || progressData?.metrics?.length) ? (
+                                        <p>No progress data available yet. Add a daily log to generate insights.</p>
                                     ) : (
-                                        <p>Generating insights...</p>
+                                        <p>Unable to generate insights at the moment.</p>
                                     )}
                                 </div>
                             </motion.div>
                         </div>
-
+                        
                         {/* Charts Section */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-0 lg:col-start-2 lg:col-span-3">
                             {chartData.weightChartData && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="bg-gray-800/50 rounded-xl p-6"
+                                    className="bg-gray-800/50 rounded-xl p-5"
                                 >
                                     <h3 className="text-xl font-semibold text-white mb-6">Weight Progress</h3>
-                                    <div className="h-[300px]">
+                                    <div className="h-[270px]">
                                         <Line data={chartData.weightChartData} options={chartOptions} />
                                     </div>
                                 </motion.div>
@@ -412,9 +455,11 @@ const StatsCard = ({ icon, title, value, change, positive, timeframe }) => (
                 <h4 className="text-2xl font-bold text-white">{value}</h4>
             </div>
         </div>
-        <div className={`text-sm ${positive ? 'text-green-400' : 'text-red-400'}`}>
-            {change} from last {timeframe}
-        </div>
+        {change && (
+            <div className={`text-sm ${positive ? 'text-green-400' : 'text-red-400'}`}>
+                {change} from last {timeframe}
+            </div>
+        )}
     </div>
 );
 
