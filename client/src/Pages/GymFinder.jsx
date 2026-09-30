@@ -44,7 +44,7 @@ const GymFinder = () => {
   };
 
   const fetchGyms = async (lat, lng) => {
-    const overpassUrl = 'https://overpass.kumi.systems/api/interpreter';
+    const overpassUrl = 'https://maps.mail.ru/osm/tools/overpass/api/interpreter';
     // const overpassUrl = 'https://overpass-api.de/api/interpreter';
     const radius = 5000;
 
