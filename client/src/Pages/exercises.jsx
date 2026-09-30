@@ -190,7 +190,7 @@ const Exercises = () => {
                                     onClick={() => setSelectedExercise(null)}
                                     className="p-2 hover:bg-gray-100 rounded-full"
                                 >
-                                    <FiX className="w-6 h-6" />
+                                    <FiX className="w-6 h-6 text-black" />
                                 </button>
                             </div>
                             <img 
